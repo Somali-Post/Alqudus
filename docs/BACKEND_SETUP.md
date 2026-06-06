@@ -1,0 +1,40 @@
+# Backend Setup
+
+## Supabase setup
+
+1. Create a Supabase project.
+2. Open the Supabase SQL editor.
+3. Run `docs/SUPABASE_SCHEMA.sql`.
+4. Copy the Supabase project URL and anon key.
+5. Create `.env.local` from `.env.example`.
+6. Add the local credentials:
+
+```bash
+VITE_SUPABASE_URL=your-project-url
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
+
+7. Restart the dev server:
+
+```bash
+npm run dev
+```
+
+8. Test the Apply form submission.
+9. Confirm a new record appears in the `driver_applications` table.
+
+## Troubleshooting row-level security
+
+If the browser reports PostgreSQL error `42501` or says a new row violates row-level security:
+
+1. Run `docs/SUPABASE_SCHEMA.sql` again in the Supabase SQL editor.
+2. Confirm the policy named `Allow public driver application inserts` exists on `driver_applications`.
+3. Confirm there is no public select policy. The website insert intentionally does not request the inserted row back.
+4. Retry the Apply form.
+
+## Current backend scope
+
+- Supabase is prepared for driver application submissions.
+- Public inserts are allowed by the schema guidance.
+- Public reads are not allowed.
+- Admin dashboard, admin authentication, document upload, and application review workflows are not built yet.

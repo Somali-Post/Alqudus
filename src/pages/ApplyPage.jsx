@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, CheckCircle2, Send } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { companyInfo } from '../data/companyInfo'
+import { submitDriverApplication } from '../services/applicationService'
 
 const initialForm = {
   fullName: '',
@@ -172,7 +173,8 @@ function SelectField({ label, name, value, onChange, placeholder, options, error
 export function ApplyPage() {
   const [form, setForm] = useState(initialForm)
   const [errors, setErrors] = useState({})
-  const [submitted, setSubmitted] = useState(false)
+  const [submissionStatus, setSubmissionStatus] = useState(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   function updateField(event) {
     const { name, value } = event.target
@@ -183,7 +185,7 @@ export function ApplyPage() {
       delete next[name]
       return next
     })
-    setSubmitted(false)
+    setSubmissionStatus(null)
   }
 
   function validateForm() {
@@ -196,19 +198,39 @@ export function ApplyPage() {
     return nextErrors
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
     const nextErrors = validateForm()
 
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors)
-      setSubmitted(false)
+      setSubmissionStatus(null)
       return
     }
 
+    setIsSubmitting(true)
     setErrors({})
-    setSubmitted(true)
-    setForm(initialForm)
+
+    const result = await submitDriverApplication(form)
+
+    setIsSubmitting(false)
+
+    if (result.ok) {
+      setSubmissionStatus({
+        type: 'success',
+        message: 'Application submitted successfully. Alqudus Express will review your details.',
+      })
+      setForm(initialForm)
+      return
+    }
+
+    setSubmissionStatus({
+      type:
+        result.code === 'backend_not_configured' || result.code === 'invalid_backend_url'
+          ? 'warning'
+          : 'error',
+      message: result.message || 'Application could not be submitted right now. Please try again later.',
+    })
   }
 
   return (
@@ -254,9 +276,17 @@ export function ApplyPage() {
               </p>
             </div>
 
-            {submitted ? (
-              <div className="mt-5 rounded-lg border border-green-200 bg-green-50 p-4 text-sm font-semibold leading-6 text-green-900">
-                Application received. This prototype does not send data yet, but the form flow is ready for backend integration.
+            {submissionStatus ? (
+              <div
+                className={`mt-5 rounded-lg border p-4 text-sm font-semibold leading-6 ${
+                  submissionStatus.type === 'success'
+                    ? 'border-green-200 bg-green-50 text-green-900'
+                    : submissionStatus.type === 'warning'
+                      ? 'border-amber-200 bg-amber-50 text-amber-900'
+                      : 'border-red-200 bg-red-50 text-red-900'
+                }`}
+              >
+                {submissionStatus.message}
               </div>
             ) : null}
 
@@ -380,8 +410,8 @@ export function ApplyPage() {
             </div>
 
             <div className="mt-7">
-              <Button type="submit" className="w-full gap-2">
-                Submit Application <Send className="h-4 w-4" aria-hidden="true" />
+              <Button type="submit" className="w-full gap-2" disabled={isSubmitting}>
+                {isSubmitting ? 'Submitting...' : 'Submit Application'} <Send className="h-4 w-4" aria-hidden="true" />
               </Button>
               <p className="mt-3 text-sm leading-6 text-steel">
                 Your information will only be used to review your owner-operator application.
