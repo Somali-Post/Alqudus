@@ -44,9 +44,16 @@ const requirements = [
   'Willing to provide required documents',
 ]
 
+// Keep truck/trailer compatibility rules centralized for future updates.
+const trailerOptionsByTruckType = {
+  'Semi truck': ['Dry van', 'Reefer', 'Flatbed', 'Step deck', 'Other'],
+  'Box truck': ['Not applicable / Box truck only'],
+  'Power Only': ['Not applicable / Power only'],
+  Other: ['Other', 'Not sure'],
+}
+
 const selectFields = {
-  truckType: ['Semi truck', 'Box truck', 'Hotshot', 'Other'],
-  trailerType: ['Dry van', 'Reefer', 'Flatbed', 'Step deck', 'Power only', 'Other'],
+  truckType: ['Semi truck', 'Box truck', 'Power Only', 'Other'],
   yearsExperience: ['Less than 1 year', '1-2 years', '3-5 years', '6-10 years', '10+ years'],
   cdlStatus: ['Active CDL', 'CDL pending', 'No CDL'],
   insuranceStatus: ['Active insurance', 'Insurance pending', 'Need guidance'],
@@ -146,7 +153,17 @@ function TextField({ label, name, value, onChange, placeholder, error, type = 't
   )
 }
 
-function SelectField({ label, name, value, onChange, placeholder, options, error, required = false }) {
+function SelectField({
+  label,
+  name,
+  value,
+  onChange,
+  placeholder,
+  options,
+  error,
+  required = false,
+  disabled = false,
+}) {
   return (
     <label className="grid gap-2">
       <span className="label">
@@ -157,6 +174,7 @@ function SelectField({ label, name, value, onChange, placeholder, options, error
         name={name}
         value={value}
         onChange={onChange}
+        disabled={disabled}
       >
         <option value="">{placeholder}</option>
         {options.map((option) => (
@@ -178,11 +196,27 @@ export function ApplyPage() {
 
   function updateField(event) {
     const { name, value } = event.target
-    setForm((current) => ({ ...current, [name]: value }))
+    setForm((current) => {
+      if (name !== 'truckType') {
+        return { ...current, [name]: value }
+      }
+
+      const validTrailerOptions = trailerOptionsByTruckType[value] || []
+      const hasAutomaticTrailer =
+        validTrailerOptions.length === 1 && validTrailerOptions[0].startsWith('Not applicable')
+      const trailerType = hasAutomaticTrailer
+        ? validTrailerOptions[0]
+        : validTrailerOptions.includes(current.trailerType)
+          ? current.trailerType
+          : ''
+
+      return { ...current, truckType: value, trailerType }
+    })
     setErrors((current) => {
-      if (!current[name]) return current
+      if (!current[name] && (name !== 'truckType' || !current.trailerType)) return current
       const next = { ...current }
       delete next[name]
+      if (name === 'truckType') delete next.trailerType
       return next
     })
     setSubmissionStatus(null)
@@ -195,6 +229,10 @@ export function ApplyPage() {
         nextErrors[name] = message
       }
     })
+    const validTrailerOptions = trailerOptionsByTruckType[form.truckType] || []
+    if (form.truckType && !validTrailerOptions.includes(form.trailerType)) {
+      nextErrors.trailerType = 'Please choose your trailer type.'
+    }
     return nextErrors
   }
 
@@ -352,8 +390,11 @@ export function ApplyPage() {
                 name="trailerType"
                 value={form.trailerType}
                 onChange={updateField}
-                placeholder="Select trailer type"
-                options={selectFields.trailerType}
+                placeholder={form.truckType ? 'Select trailer type' : 'Select truck type first'}
+                options={trailerOptionsByTruckType[form.truckType] || []}
+                error={errors.trailerType}
+                required={Boolean(form.truckType)}
+                disabled={!form.truckType}
               />
               <SelectField
                 label="Years of experience"

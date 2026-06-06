@@ -1,5 +1,8 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { AdminShell } from '../components/admin/AdminShell'
 import { AppLayout } from '../components/layout/AppLayout'
+import { AdminApplicationsPage } from '../pages/admin/AdminApplicationsPage'
+import { AdminLoginPage } from '../pages/admin/AdminLoginPage'
 import { AboutPage } from '../pages/AboutPage'
 import { ApplyPage } from '../pages/ApplyPage'
 import { ContactPage } from '../pages/ContactPage'
@@ -18,6 +21,18 @@ export const router = createBrowserRouter([
       { path: 'about', element: <AboutPage /> },
       { path: 'contact', element: <ContactPage /> },
       { path: '*', element: <NotFoundPage /> },
+    ],
+  },
+  {
+    path: '/admin/login',
+    element: <AdminLoginPage />,
+  },
+  {
+    path: '/admin',
+    element: <AdminShell />,
+    children: [
+      { index: true, element: <Navigate to="/admin/applications" replace /> },
+      { path: 'applications', element: <AdminApplicationsPage /> },
     ],
   },
 ])

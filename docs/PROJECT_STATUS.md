@@ -2,9 +2,9 @@
 
 ## Current phase
 
-Phase 1 public website prototype.
+Phase 2 onboarding operations foundation.
 
-Current next phase: Supabase application submission integration.
+Current next phase: admin-side driver onboarding document tracking.
 
 ## Completed pages
 
@@ -13,19 +13,27 @@ Current next phase: Supabase application submission integration.
 - Apply
 - About
 - Contact
+- Admin applications dashboard UI foundation
+- Admin login and protected admin routes
+- Admin-side onboarding document checklist
 
 ## Known limitations
 
-- Backend is prepared but requires Supabase credentials.
-- Apply form submission is wired to Supabase through the application service, but it cannot submit until `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are configured.
+- Supabase insert works when project credentials and the public insert policy are configured.
+- Admin dashboard UI foundation is prepared at `/admin/applications`.
+- Supabase Auth login, admin profile authorization, and protected routes are implemented.
+- The latest schema must be run and an admin user/profile must be created before real application viewing.
 - Contact form still shows prototype success messages only.
 - Contact form does not send email yet.
-- Admin dashboard is not built yet.
-- Document upload is not built yet.
+- Document tracking foundation is in progress.
+- Sensitive document upload is not built yet.
+- Driver portal is not built yet.
+- Social Security numbers must not be stored as plain text or entered in notes.
 - Carrier-profile details are displayed from the current project data file and should be re-confirmed with the client before production launch.
 
 ## Next recommended feature
 
-Application form data handling.
+Secure document upload planning.
 
-Recommended next step: configure Supabase credentials, run the schema, and verify driver application records are inserted into `driver_applications`.
+Recommended next step: run the latest schema, verify admin document checklist
+access, then design private Supabase Storage policies and secure upload links.
