@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, CheckCircle2, Send } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { companyInfo } from '../data/companyInfo'
+import { sendApplicationSubmissionEmail } from '../services/applicationEmailService'
 import { submitDriverApplication } from '../services/applicationService'
 
 const initialForm = {
@@ -254,6 +255,11 @@ export function ApplyPage() {
     setIsSubmitting(false)
 
     if (result.ok) {
+      sendApplicationSubmissionEmail(result.applicationId).then((emailResult) => {
+        if (!emailResult.ok && import.meta.env.DEV) {
+          console.error('Application saved, but submission emails failed:', emailResult.message)
+        }
+      })
       setSubmissionStatus({
         type: 'success',
         message: 'Application submitted successfully. Alqudus Express will review your details.',
@@ -310,7 +316,7 @@ export function ApplyPage() {
             <div>
               <h2 className="text-2xl font-black text-navy">Driver details</h2>
               <p className="mt-2 leading-7 text-steel">
-                This prototype keeps form data in local component state only.
+                Submit your details and our team will review your application.
               </p>
             </div>
 

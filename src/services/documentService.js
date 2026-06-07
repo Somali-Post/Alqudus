@@ -14,6 +14,14 @@ export const standardDocumentTypes = [
 ]
 
 const ACCESS_MESSAGE = 'Document tracking requires authorized admin access.'
+const allowedDocumentStatuses = new Set([
+  'not_requested',
+  'requested',
+  'received',
+  'approved',
+  'rejected',
+  'expired',
+])
 
 async function requireAdminAccess() {
   if (!isSupabaseConfigured || !supabase) {
@@ -42,11 +50,12 @@ function isPermissionError(error) {
   )
 }
 
-function serviceError(operation, recordId, error, fallbackMessage) {
+function serviceError(operation, recordId, error, fallbackMessage, updatePayload) {
   if (import.meta.env.DEV) {
     console.error('Supabase driver document operation failed:', {
       operation,
       documentId: recordId,
+      updatePayload,
       error,
     })
   }
@@ -110,13 +119,29 @@ export async function updateDocumentRecord(documentId, updates) {
   const access = await requireAdminAccess()
   if (!access.ok) return access
 
+  if (!documentId) {
+    return {
+      ok: false,
+      code: 'invalid_document_id',
+      message: 'The document record could not be updated.',
+    }
+  }
+
   const cleanUpdates = Object.fromEntries(
     Object.entries({
       status: updates.status,
       notes: updates.notes,
-      expires_at: updates.expires_at,
+      expires_at: updates.expires_at === '' ? null : updates.expires_at,
     }).filter(([, value]) => value !== undefined),
   )
+
+  if (cleanUpdates.status && !allowedDocumentStatuses.has(cleanUpdates.status)) {
+    return {
+      ok: false,
+      code: 'invalid_document_status',
+      message: 'The selected document status is not valid.',
+    }
+  }
 
   if (Object.keys(cleanUpdates).length === 0) {
     return {
@@ -126,23 +151,34 @@ export async function updateDocumentRecord(documentId, updates) {
     }
   }
 
-  const { data, error } = await supabase
-    .from('driver_documents')
-    .update({
-      ...cleanUpdates,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', documentId)
-    .select()
-    .single()
+  // Use the admin-only RPC because some hosted REST configurations reject
+  // browser PATCH preflights even when the table RLS policy is correct.
+  const { data, error } = await supabase.rpc('update_driver_document_admin', {
+    p_document_id: documentId,
+    p_status: cleanUpdates.status ?? null,
+    p_notes: cleanUpdates.notes ?? null,
+    p_expires_at: cleanUpdates.expires_at ?? null,
+  })
 
   if (error) {
     return serviceError(
-      'updateDocumentRecord',
+      'updateDocumentRecordRpc',
       documentId,
       error,
       'The document record could not be updated.',
+      cleanUpdates,
     )
   }
+
+  if (!data) {
+    return serviceError(
+      'updateDocumentRecordRpc',
+      documentId,
+      { message: 'RPC returned no document row.' },
+      'The document record could not be updated.',
+      cleanUpdates,
+    )
+  }
+
   return { ok: true, data }
 }

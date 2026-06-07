@@ -75,9 +75,29 @@ create table if not exists public.driver_documents (
     unique (application_id, document_type)
 );
 
+create table if not exists public.driver_upload_tokens (
+  id uuid primary key default gen_random_uuid(),
+  application_id uuid not null references public.driver_applications(id) on delete cascade,
+  token text not null unique,
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  is_revoked boolean not null default false,
+  created_at timestamptz not null default now(),
+  created_by uuid references auth.users(id)
+);
+
+create table if not exists public.application_email_notifications (
+  application_id uuid primary key references public.driver_applications(id) on delete cascade,
+  admin_sent_at timestamptz,
+  applicant_sent_at timestamptz,
+  last_attempt_at timestamptz not null default now()
+);
+
 alter table public.driver_applications enable row level security;
 alter table public.admin_profiles enable row level security;
 alter table public.driver_documents enable row level security;
+alter table public.driver_upload_tokens enable row level security;
+alter table public.application_email_notifications enable row level security;
 
 -- Admin profile access:
 -- Authenticated users may read only their own admin profile.
@@ -144,6 +164,88 @@ grant insert (
 )
 on public.driver_applications
 to anon, authenticated;
+
+-- Public submission RPC returns only the new UUID. It does not expose
+-- application rows and keeps status/source/admin fields server-controlled.
+create or replace function public.submit_driver_application(
+  p_full_name text,
+  p_phone text,
+  p_email text,
+  p_city text,
+  p_state text,
+  p_truck_type text,
+  p_trailer_type text,
+  p_years_experience text,
+  p_cdl_status text,
+  p_insurance_status text,
+  p_preferred_routes text,
+  p_availability text,
+  p_message text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_application_id uuid;
+begin
+  if nullif(trim(p_full_name), '') is null
+    or nullif(trim(p_phone), '') is null
+    or nullif(trim(p_city), '') is null
+    or nullif(trim(p_state), '') is null
+    or nullif(trim(p_truck_type), '') is null
+    or nullif(trim(p_cdl_status), '') is null then
+    raise exception 'Required application fields are missing';
+  end if;
+
+  insert into public.driver_applications (
+    full_name,
+    phone,
+    email,
+    city,
+    state,
+    truck_type,
+    trailer_type,
+    years_experience,
+    cdl_status,
+    insurance_status,
+    preferred_routes,
+    availability,
+    message,
+    status,
+    source
+  )
+  values (
+    trim(p_full_name),
+    trim(p_phone),
+    nullif(trim(p_email), ''),
+    trim(p_city),
+    trim(p_state),
+    trim(p_truck_type),
+    nullif(trim(p_trailer_type), ''),
+    nullif(trim(p_years_experience), ''),
+    trim(p_cdl_status),
+    nullif(trim(p_insurance_status), ''),
+    nullif(trim(p_preferred_routes), ''),
+    nullif(trim(p_availability), ''),
+    nullif(trim(p_message), ''),
+    'new',
+    'website'
+  )
+  returning id into new_application_id;
+
+  return new_application_id;
+end;
+$$;
+
+revoke all on function public.submit_driver_application(
+  text, text, text, text, text, text, text, text, text, text, text, text, text
+) from public;
+
+grant execute on function public.submit_driver_application(
+  text, text, text, text, text, text, text, text, text, text, text, text, text
+) to anon, authenticated;
 
 -- Authenticated admin application access.
 -- Public anon SELECT remains blocked because no anon SELECT policy or grant exists.
@@ -263,3 +365,145 @@ using (
 
 revoke all on public.driver_documents from anon;
 grant select, insert, update, delete on public.driver_documents to authenticated;
+
+-- Admin-only document update RPC.
+-- This provides a POST-based update path for browser environments where the
+-- REST PATCH preflight is blocked. It still requires an authenticated user
+-- whose auth UID exists in admin_profiles.
+create or replace function public.update_driver_document_admin(
+  p_document_id uuid,
+  p_status text,
+  p_notes text,
+  p_expires_at date
+)
+returns public.driver_documents
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  updated_document public.driver_documents;
+begin
+  if auth.uid() is null or not exists (
+    select 1
+    from public.admin_profiles
+    where admin_profiles.user_id = auth.uid()
+  ) then
+    raise exception 'Admin access required' using errcode = '42501';
+  end if;
+
+  if p_status is not null and p_status not in (
+    'not_requested',
+    'requested',
+    'received',
+    'approved',
+    'rejected',
+    'expired'
+  ) then
+    raise exception 'Invalid document status' using errcode = '22023';
+  end if;
+
+  update public.driver_documents
+  set
+    status = coalesce(p_status, status),
+    notes = p_notes,
+    expires_at = p_expires_at,
+    updated_at = now()
+  where id = p_document_id
+  returning * into updated_document;
+
+  if updated_document.id is null then
+    raise exception 'Document not found' using errcode = 'P0002';
+  end if;
+
+  return updated_document;
+end;
+$$;
+
+revoke all on function public.update_driver_document_admin(uuid, text, text, date) from public;
+revoke all on function public.update_driver_document_admin(uuid, text, text, date) from anon;
+grant execute on function public.update_driver_document_admin(uuid, text, text, date) to authenticated;
+
+-- Upload link records are visible and manageable only to authenticated admins.
+-- Anonymous token validation is handled by the driver-document-upload Edge
+-- Function so tokens cannot be listed or queried through the REST API.
+drop policy if exists "Admins can read driver upload tokens"
+on public.driver_upload_tokens;
+
+create policy "Admins can read driver upload tokens"
+on public.driver_upload_tokens
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.admin_profiles
+    where admin_profiles.user_id = auth.uid()
+  )
+);
+
+drop policy if exists "Admins can insert driver upload tokens"
+on public.driver_upload_tokens;
+
+create policy "Admins can insert driver upload tokens"
+on public.driver_upload_tokens
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.admin_profiles
+    where admin_profiles.user_id = auth.uid()
+  )
+);
+
+drop policy if exists "Admins can update driver upload tokens"
+on public.driver_upload_tokens;
+
+create policy "Admins can update driver upload tokens"
+on public.driver_upload_tokens
+for update
+to authenticated
+using (
+  exists (
+    select 1
+    from public.admin_profiles
+    where admin_profiles.user_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.admin_profiles
+    where admin_profiles.user_id = auth.uid()
+  )
+);
+
+drop policy if exists "Admins can delete driver upload tokens"
+on public.driver_upload_tokens;
+
+create policy "Admins can delete driver upload tokens"
+on public.driver_upload_tokens
+for delete
+to authenticated
+using (
+  exists (
+    select 1
+    from public.admin_profiles
+    where admin_profiles.user_id = auth.uid()
+  )
+);
+
+revoke all on public.driver_upload_tokens from anon;
+grant select, insert, update, delete on public.driver_upload_tokens to authenticated;
+
+-- Private storage bucket used only by the token-validating Edge Function.
+-- Do not add public storage.objects policies for this bucket.
+insert into storage.buckets (id, name, public)
+values ('driver-documents', 'driver-documents', false)
+on conflict (id) do update
+set public = false;
+
+-- Email delivery bookkeeping is internal to the server-side application
+-- submission email function. No browser role receives table access.
+revoke all on public.application_email_notifications from anon, authenticated;

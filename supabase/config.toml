@@ -1,0 +1,11 @@
+[functions.driver-document-upload]
+verify_jwt = false
+
+[functions.send-document-request-email]
+verify_jwt = true
+
+[functions.send-application-submission-email]
+verify_jwt = false
+
+[functions.get-driver-document-download-url]
+verify_jwt = true

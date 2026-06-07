@@ -64,9 +64,21 @@ export async function submitDriverApplication(applicationData) {
   }
 
   try {
-    const { error } = await supabase
-      .from('driver_applications')
-      .insert(payload)
+    const { data: applicationId, error } = await supabase.rpc('submit_driver_application', {
+      p_full_name: payload.full_name,
+      p_phone: payload.phone,
+      p_email: payload.email,
+      p_city: payload.city,
+      p_state: payload.state,
+      p_truck_type: payload.truck_type,
+      p_trailer_type: payload.trailer_type,
+      p_years_experience: payload.years_experience,
+      p_cdl_status: payload.cdl_status,
+      p_insurance_status: payload.insurance_status,
+      p_preferred_routes: payload.preferred_routes,
+      p_availability: payload.availability,
+      p_message: payload.message,
+    })
 
     if (error) {
       if (import.meta.env.DEV) {
@@ -100,6 +112,7 @@ export async function submitDriverApplication(applicationData) {
 
     return {
       ok: true,
+      applicationId,
     }
   } catch (error) {
     if (import.meta.env.DEV) {

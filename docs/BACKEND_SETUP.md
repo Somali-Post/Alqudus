@@ -23,6 +23,27 @@ npm run dev
 8. Test the Apply form submission.
 9. Confirm a new record appears in the `driver_applications` table.
 
+The current Apply form uses the `submit_driver_application` database function
+to return only the new application UUID without granting public SELECT access.
+Rerun the latest schema before testing application submission emails.
+
+## Application email deployment
+
+Configure the server-side Resend secrets:
+
+```bash
+npx supabase secrets set RESEND_API_KEY=your_resend_api_key
+npx supabase secrets set DOCUMENT_REQUEST_FROM_EMAIL=onboarding@resend.dev
+```
+
+Deploy the application notification function:
+
+```bash
+npx supabase functions deploy send-application-submission-email
+```
+
+The Resend API key must never be added to Vite `.env.local` variables.
+
 ## Troubleshooting row-level security
 
 If the browser reports PostgreSQL error `42501` or says a new row violates row-level security:

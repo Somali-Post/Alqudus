@@ -80,6 +80,41 @@ export async function fetchDriverApplications() {
   return { ok: true, data: data || [] }
 }
 
+export async function fetchDriverApplication(id) {
+  const sessionResult = await requireAdminSession()
+  if (!sessionResult.ok) return sessionResult
+
+  const { data, error } = await supabase
+    .from('driver_applications')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error) {
+    if (import.meta.env.DEV) {
+      console.error('Supabase admin application detail fetch failed:', error)
+    }
+
+    return {
+      ok: false,
+      code: isPermissionError(error) ? 'admin_not_configured' : 'admin_fetch_failed',
+      message: isPermissionError(error)
+        ? ADMIN_SETUP_MESSAGE
+        : 'The application could not be loaded right now. Please try again later.',
+    }
+  }
+
+  if (!data) {
+    return {
+      ok: false,
+      code: 'not_found',
+      message: 'This driver application could not be found.',
+    }
+  }
+
+  return { ok: true, data }
+}
+
 export async function updateDriverApplicationStatus(id, status) {
   const sessionResult = await requireAdminSession(ADMIN_UPDATE_MESSAGE)
   if (!sessionResult.ok) return sessionResult
