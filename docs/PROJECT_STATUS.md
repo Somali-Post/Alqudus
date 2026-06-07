@@ -42,7 +42,10 @@ Current next phase: deploy and verify tokenized private document uploads.
 - Document request email sending requires deployed `send-document-request-email`
   and configured Resend function secrets.
 - Application submission emails require the latest schema RPC, configured Resend
-  secrets, and deployed `send-application-submission-email`.
+  secrets (`RESEND_API_KEY`, `DOCUMENT_REQUEST_FROM_EMAIL`, and
+  `APPLICATION_ADMIN_EMAIL`) and deployed `send-application-submission-email`.
+- Application submission email delivery now reports admin and applicant results
+  separately in Supabase function logs.
 - Driver portal is not built yet.
 - Social Security numbers must not be stored as plain text or entered in notes.
 - Secure admin downloads require deployment of

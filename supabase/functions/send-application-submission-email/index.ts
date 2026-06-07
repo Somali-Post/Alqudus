@@ -6,8 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const adminEmail = 'alqudusexpresstrucking@gmail.com'
-
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -54,9 +52,13 @@ async function sendResendEmail(
   if (!response.ok) {
     throw new Error(`Resend returned ${response.status}: ${await response.text()}`)
   }
+
+  return await response.json()
 }
 
 Deno.serve(async (request) => {
+  console.log('Application submission email function started.')
+
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -71,6 +73,9 @@ Deno.serve(async (request) => {
   const fromEmail =
     Deno.env.get('APPLICATION_FROM_EMAIL') ||
     Deno.env.get('DOCUMENT_REQUEST_FROM_EMAIL')
+  const adminEmail =
+    Deno.env.get('APPLICATION_ADMIN_EMAIL')?.trim() ||
+    'alqudusexpresstrucking@gmail.com'
 
   if (!supabaseUrl || !serviceRoleKey || !resendApiKey || !fromEmail) {
     console.error('Application submission email function is missing server configuration.')
@@ -84,6 +89,8 @@ Deno.serve(async (request) => {
     if (!applicationId) {
       return jsonResponse({ ok: false, message: 'Application ID is required.' }, 400)
     }
+
+    console.log('Application submission email application ID received:', applicationId)
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -102,16 +109,22 @@ Deno.serve(async (request) => {
       return jsonResponse({ ok: false, message: 'Application could not be verified.' }, 404)
     }
 
+    console.log('Application submission email application found:', application.id)
+
     const ageMs = Date.now() - new Date(application.created_at).getTime()
     if (ageMs < 0 || ageMs > 30 * 60 * 1000) {
       return jsonResponse({ ok: false, message: 'Application email window has expired.' }, 403)
     }
 
-    const { data: notification } = await adminClient
+    const { data: notification, error: notificationLookupError } = await adminClient
       .from('application_email_notifications')
       .select('admin_sent_at, applicant_sent_at')
       .eq('application_id', applicationId)
       .maybeSingle()
+
+    if (notificationLookupError) {
+      console.error('Application email bookkeeping lookup failed:', notificationLookupError)
+    }
 
     const location = `${application.city}, ${application.state}`
     const adminText = `New owner-operator application received.
@@ -161,21 +174,31 @@ Please review the application in the Alqudus Express Admin Dashboard.`
 
     let adminSentAt = notification?.admin_sent_at || null
     let applicantSentAt = notification?.applicant_sent_at || null
-    const errors: string[] = []
+    let adminEmailSent = Boolean(adminSentAt)
+    let applicantEmailSent = Boolean(applicantSentAt)
+    let adminEmailError: string | null = null
+    let applicantEmailError: string | null = null
 
     if (!adminSentAt) {
+      console.log('Admin application notification email attempted.')
       try {
-        await sendResendEmail(resendApiKey, fromEmail, {
+        const resendResult = await sendResendEmail(resendApiKey, fromEmail, {
           to: adminEmail,
           subject: 'New Driver Application - Alqudus Express Trucking',
           text: adminText,
           html: adminHtml,
         })
         adminSentAt = new Date().toISOString()
+        adminEmailSent = true
+        console.log('Admin application notification email succeeded:', {
+          resendEmailId: resendResult?.id || null,
+        })
       } catch (error) {
         console.error('Admin application notification email failed:', error)
-        errors.push('admin')
+        adminEmailError = 'Admin notification could not be sent'
       }
+    } else {
+      console.log('Admin application notification email already recorded as sent.')
     }
 
     if (application.email && !applicantSentAt) {
@@ -195,18 +218,27 @@ Alqudus Express Trucking LLC`
         <p>Thank you,<br>Alqudus Express Trucking LLC</p>
       `
 
+      console.log('Applicant application confirmation email attempted.')
       try {
-        await sendResendEmail(resendApiKey, fromEmail, {
+        const resendResult = await sendResendEmail(resendApiKey, fromEmail, {
           to: application.email,
           subject: 'Application Received - Alqudus Express Trucking',
           text: applicantText,
           html: applicantHtml,
         })
         applicantSentAt = new Date().toISOString()
+        applicantEmailSent = true
+        console.log('Applicant application confirmation email succeeded:', {
+          resendEmailId: resendResult?.id || null,
+        })
       } catch (error) {
         console.error('Applicant application confirmation email failed:', error)
-        errors.push('applicant')
+        applicantEmailError = 'Applicant confirmation could not be sent'
       }
+    } else if (application.email) {
+      console.log('Applicant application confirmation email already recorded as sent.')
+    } else {
+      console.log('Applicant application confirmation email skipped: no applicant email.')
     }
 
     const { error: notificationError } = await adminClient
@@ -222,11 +254,17 @@ Alqudus Express Trucking LLC`
       console.error('Application email bookkeeping failed:', notificationError)
     }
 
-    if (errors.length > 0) {
-      return jsonResponse({ ok: false, message: 'One or more application emails could not be sent.' }, 502)
-    }
+    const success = adminEmailSent
 
-    return jsonResponse({ ok: true, message: 'Application emails processed.' })
+    return jsonResponse({
+      ok: success,
+      success,
+      adminEmailSent,
+      applicantEmailSent,
+      applicantEmailSkipped: !application.email,
+      ...(adminEmailError ? { adminEmailError } : {}),
+      ...(applicantEmailError ? { applicantEmailError } : {}),
+    })
   } catch (error) {
     console.error('Unexpected application submission email failure:', error)
     return jsonResponse({ ok: false, message: 'Application emails could not be sent.' }, 500)

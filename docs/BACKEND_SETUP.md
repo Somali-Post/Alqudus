@@ -34,6 +34,7 @@ Configure the server-side Resend secrets:
 ```bash
 npx supabase secrets set RESEND_API_KEY=your_resend_api_key
 npx supabase secrets set DOCUMENT_REQUEST_FROM_EMAIL=onboarding@resend.dev
+npx supabase secrets set APPLICATION_ADMIN_EMAIL=alqudusexpresstrucking@gmail.com
 ```
 
 Deploy the application notification function:
@@ -43,6 +44,16 @@ npx supabase functions deploy send-application-submission-email
 ```
 
 The Resend API key must never be added to Vite `.env.local` variables.
+`APPLICATION_ADMIN_EMAIL` controls where new-application notifications are
+sent. If it is omitted, the function falls back to
+`alqudusexpresstrucking@gmail.com`.
+
+The Resend test sender `onboarding@resend.dev` may be restricted to the email
+address associated with the Resend account. To deliver reliably to
+`APPLICATION_ADMIN_EMAIL` and arbitrary applicants, verify a sending domain in
+Resend and replace `DOCUMENT_REQUEST_FROM_EMAIL` with an address on that domain.
+Check the `send-application-submission-email` function logs for separate admin
+and applicant Resend results.
 
 ## Troubleshooting row-level security
 

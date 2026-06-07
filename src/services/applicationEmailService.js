@@ -9,15 +9,30 @@ export async function sendApplicationSubmissionEmail(applicationId) {
     body: { applicationId },
   })
 
-  if (error || !data?.ok) {
+  if (import.meta.env.DEV) {
+    console.info('Application submission email result:', {
+      invocationError: error || null,
+      response: data || null,
+    })
+  }
+
+  if (error) {
     if (import.meta.env.DEV) {
-      console.error('Application submission email invocation failed:', error || data)
+      console.error('Application submission email invocation failed:', error)
     }
     return {
       ok: false,
-      message: data?.message || 'Application emails could not be sent.',
+      message: 'Application emails could not be sent.',
     }
   }
 
-  return { ok: true }
+  return {
+    ok: Boolean(data?.success),
+    adminEmailSent: Boolean(data?.adminEmailSent),
+    applicantEmailSent: Boolean(data?.applicantEmailSent),
+    applicantEmailSkipped: Boolean(data?.applicantEmailSkipped),
+    adminEmailError: data?.adminEmailError || null,
+    applicantEmailError: data?.applicantEmailError || null,
+    message: data?.adminEmailError || data?.applicantEmailError || null,
+  }
 }
